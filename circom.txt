@@ -1,0 +1,199 @@
+Writing circuits
+circom allows programmers to define the constraints that define the arithmetic circuit. All constraints must be of the form A*B + C = 0, where A, B and C are linear combinations of signals. More details about these equations can be found here.
+
+The arithmetic circuits built using circom operate on signals. Let us define our first circuit that simply multiplies two input signals and produces an output signal.
+
+pragma circom 2.0.0;
+
+/*This circuit template checks that c is the multiplication of a and b.*/  
+
+template Multiplier2 () {  
+
+   // Declaration of signals.  
+   signal input a;  
+   signal input b;  
+   signal output c;  
+
+   // Constraints.  
+   c <== a * b;  
+}
+First, the pragma instruction is used to specify the compiler version. This is to ensure that the circuit is compatible with the compiler version indicated after the pragma instruction. Otherwise, the compiler will throw a warning.
+
+Then, we use the reserved keyword template to define the shape of a new circuit, called Multiplier2. Now, we have to define its signals. Signals can be named with an identifier, e.g., a, b, c. In this circuit, we have two input signalsa, b and an output signal c. Finally, we use <== to set that the value of c is the result of multiplying the values of a and b. Equivalently, we could have also used the operator ==>, e.g., a * b ==> c.
+
+Let us notice that in each template, we first declare its signals, and after that, the associated constraints.
+
+Compiling our circuit
+Once you have the compiler installed you can see the available options as follows:
+
+circom --help
+
+USAGE:
+    circom [FLAGS] [OPTIONS] [--] [input]
+
+FLAGS:
+        --r1cs                                 Outputs the constraints in r1cs format
+        --sym                                  Outputs witness in sym format
+        --wasm                                 Compiles the circuit to wasm
+        --json                                 Outputs the constraints in json format
+        --wat                                  Compiles the circuit to wat
+    -c, --c                                    Compiles the circuit to C++
+        --O0                                   No simplification is applied
+        --O1                                   Only applies signal to signal and signal to constant simplification. This
+                                               is the default option
+        --O2                                   Full constraint simplification
+        --verbose                              Shows logs during compilation
+        --inspect                              Does an additional check over the constraints produced
+        --use_old_simplification_heuristics    Applies the old version of the heuristics when performing linear
+                                               simplification
+        --simplification_substitution          Outputs the substitution applied in the simplification phase in json
+                                               format
+        --no_asm                               Does not use asm files in witness generation code in C++
+        --no_init                              Removes initializations to 0 of variables ("var") in the witness
+                                               generation code
+    -h, --help                                 Prints help information
+    -V, --version                              Prints version information
+
+OPTIONS:
+    -o, --output <output>                    Path to the directory where the output will be written [default: .]
+    -p, --prime <prime>                      To choose the prime number to use to generate the circuit. Receives the
+                                             name of the curve (bn128, bls12377, bls12381, goldilocks, grumpkin, pallas,
+                                             secq256r1, vesta) [default: bn128]
+    -l <link_libraries>...                   Adds directory to library search path
+        --O2round <simplification_rounds>    Maximum number of rounds of the simplification process
+        --sanity_check <sanity_check>        Selects the level of sanity checks to be included in the witness generation
+                                             code generated. It receives the value 0, 1, or 2. [default: 2]
+
+ARGS:
+    <input>    Path to a circuit with a main component [default: ./circuit.circom]
+We created a template called Multiplier2 in Writing our first circuit. However, to actually create a circuit, we have to create an instance of this template. To do so, create a file with the following content:
+
+pragma circom 2.0.0;
+
+template Multiplier2() {
+    signal input a;
+    signal input b;
+    signal output c;
+    c <== a*b;
+ }
+
+ component main = Multiplier2();
+After we write our arithmetic circuit using circom, we should save it in a file with the .circom extension. Remember that you can create your own circuits or use the templates from our library of circuits circomlib.
+
+In our example, we create a file called multiplier2.circom. Now is time to compile the circuit to get a system of arithmetic equations representing it. As a result of the compilation we will also obtain programs to compute the witness. We can compile the circuit with the following command:
+
+circom multiplier2.circom --r1cs --wasm --sym --c
+With these options we generate three types of files:
+
+--r1cs: it generates the file multiplier2.r1cs that contains the R1CS constraint system of the circuit in binary format.
+--wasm: it generates the directory multiplier2_js that contains the Wasm code (multiplier2.wasm) and other files needed to generate the witness.
+--sym : it generates the file multiplier2.sym , a symbols file required for debugging or for printing the constraint system in an annotated mode.
+--c : it generates the directory multiplier2_cpp that contains several files (multiplier2.cpp, multiplier2.dat, and other common files for every compiled program like main.cpp, MakeFile, etc) needed to compile the C++ code to generate the witness. By default, this option generates an asm file that is incompatible with some architectures. To avoid producing asm files, the flag --no_asm must be activated.
+We can use the option -o to specify the directory where these files are created.
+
+Since version 2.0.8, we can use the option -l to indicate the directory where the directive include should look for the circuits indicated.
+
+Computing our witness
+What is a witness?
+Before creating the proof, we need to calculate all the signals of the circuit that match all the constraints of the circuit. For that, we will use the Wasm module generated bycircom that helps to do this job. It can also be done with the C++ code in a similar way (see below).
+
+Let us start with the Wasm code. Using the generated Wasm binary and three JavaScript files, we simply need to provide a file with the inputs and the module will execute the circuit and calculate all the intermediate signals and the output. The set of inputs, intermediate signals and output is called witness.
+
+In our case, we want to prove that we are able to factor the number 33. So, we assign a = 3 and b = 11.
+
+Note that we could assign the number 1 to one of the inputs and the number 33 to the other. So, our proof does not really show that we are able to factor the number 33.
+
+We need to create a file named input.json containing the inputs written in the standard json format.
+
+We use strings instead of numbers because JavaScript does not work accurately with integers larger than 253.
+
+{"a": "3", "b": "11"}
+Now, we calculate the witness and generate a binary file witness.wtns containing it in a format accepted by snarkjs.
+
+After calling the circom compiler with the flag --wasm and the circuit multiplier2.circom we can find a multiplier2_js folder that contains the Wasm code in multiplier2.wasm and all the needed JavaScript files.
+
+Computing the witness with WebAssembly
+Enter in the directory multiplier2_js, add the input in a file input.json and execute:
+
+node generate_witness.js multiplier2.wasm input.json witness.wtns
+Computing the witness with C++
+As a faster alternative, we can use the C++ directory to compute the witness using the previous file input.json. This directory is created when using the circom compiler with the flag --c. In our example, the compiler creates a multiplier2_cpp folder that contains all the C++ code needed to compute the witness and a Makefile to easily generate the corresponding executable program.
+
+To do so, enter the directory multiplier2_cpp and execute:
+
+make
+The previous command creates an executable called multiplier2.
+
+Note. To compile the C++ source, we rely on some libraries that you need to have installed in your system. In particular, we use nlohmann-json3-dev, libgmp-dev and nasm.
+
+After the executable is created, we execute it indicating the input file and the name for the witness file:
+
+./multiplier2 input.json witness.wtns
+The Witness file
+The two programs will generate the same ẁitness.wtns file. This file is encoded in a binary format compatible with snarkjs, which is the tool that we use to create the actual proofs.
+
+Note. For big circuits, the C++ witness calculator is significantly faster than the WASM calculator.
+
+Proving circuits
+After compiling the circuit and running the witness calculator with an appropriate input, we will have a file with extension .wtns that contains all the computed signals and, a file with extension .r1cs that contains the constraints describing the circuit. Both files will be used to create our proof.
+
+Now, we will use the snarkjs tool to generate and validate a proof for our input. In particular, using the multiplier2, we will prove that we are able to provide the two factors of the number 33. That is, we will show that we know two integers a and b such that when we multiply them, it results in the number 33.
+
+We are going to use the Groth16 zk-SNARK protocol. To use this protocol, you will need to generate a trusted setup. Groth16 requires a per circuit trusted setup. In more detail, the trusted setup consists of 2 parts:
+
+The powers of tau, which is independent of the circuit.
+The phase 2, which depends on the circuit.
+Next, we provide a very basic ceremony for creating the trusted setup and we also provide the basic commands to create and verify Groth16 proofs. Review the related Background section and check the snarkjs tutorial for further information.
+
+Powers of Tau
+First, we start a new "powers of tau" ceremony:
+
+snarkjs powersoftau new bn128 12 pot12_0000.ptau -v
+Then, we contribute to the ceremony:
+
+snarkjs powersoftau contribute pot12_0000.ptau pot12_0001.ptau --name="First contribution" -v
+Now, we have the contributions to the powers of tau in the file pot12_0001.ptau and we can proceed with the Phase 2.
+
+Phase 2
+The phase 2 is circuit-specific. Execute the following command to start the generation of this phase:
+
+snarkjs powersoftau prepare phase2 pot12_0001.ptau pot12_final.ptau -v
+Next, we generate a .zkey file that will contain the proving and verification keys together with all phase 2 contributions. Execute the following command to start a new zkey:
+
+snarkjs groth16 setup multiplier2.r1cs pot12_final.ptau multiplier2_0000.zkey
+Contribute to the phase 2 of the ceremony:
+
+snarkjs zkey contribute multiplier2_0000.zkey multiplier2_0001.zkey --name="1st Contributor Name" -v
+Export the verification key:
+
+snarkjs zkey export verificationkey multiplier2_0001.zkey verification_key.json
+Generating a Proof
+Once the witness is computed and the trusted setup is already executed, we can generate a zk-proof associated to the circuit and the witness:
+
+snarkjs groth16 prove multiplier2_0001.zkey witness.wtns proof.json public.json
+This command generates a Groth16 proof and outputs two files:
+
+proof.json: it contains the proof.
+public.json: it contains the values of the public inputs and outputs.
+Verifying a Proof
+To verify the proof, execute the following command:
+
+snarkjs groth16 verify verification_key.json public.json proof.json
+The command uses the files verification_key.json we exported earlier,proof.json and public.json to check if the proof is valid. If the proof is valid, the command outputs an OK.
+
+A valid proof not only proves that we know a set of signals that satisfy the circuit, but also that the public inputs and outputs that we use match the ones described in the public.json file.
+
+Verifying from a Smart Contract
+​👉 It is also possible to generate a Solidity verifier that allows verifying proofs on Ethereum blockchain.
+
+First, we need to generate the Solidity code using the command:
+
+snarkjs zkey export solidityverifier multiplier2_0001.zkey verifier.sol
+This command takes validation key multiplier2_0001.zkey and outputs Solidity code in a file named verifier.sol. You can take the code from this file and cut and paste it in Remix. You will see that the code contains two contracts: Pairing and Verifier. You only need to deploy the Verifier contract.
+
+You may want to use first a testnet like Rinkeby, Kovan or Ropsten. You can also use the JavaScript VM, but in some browsers the verification takes long and the page may freeze.
+
+The Verifier has a view function called verifyProof that returns TRUE if and only if the proof and the inputs are valid. To facilitate the call, you can use snarkJS to generate the parameters of the call by typing:
+
+snarkjs generatecall
+Cut and paste the output of the command to the parameters field of the verifyProof method in Remix. If everything works fine, this method should return TRUE. You can try to change just a single bit of the parameters, and you will see that the result is verifiable FALSE.
