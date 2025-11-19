@@ -15,3 +15,5 @@ docs/
 
 # Example projects (reference only)
 examples/
+
+relayer/node_modules
