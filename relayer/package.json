@@ -1,0 +1,19 @@
+{
+  "name": "rayls-trust-anchor-relayer",
+  "version": "1.0.0",
+  "description": "Relayer service for Rayls Trust Anchor - generates commitments and submits ZK proofs to Ethereum",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "relay": "node index.js",
+    "watch": "node watch.js",
+    "watch:fast": "node watch.js 10",
+    "events": "node event-watcher.js"
+  },
+  "dependencies": {
+    "circomlibjs": "^0.1.7",
+    "dotenv": "^16.3.1",
+    "ethers": "^6.9.0",
+    "snarkjs": "^0.7.3"
+  }
+}
