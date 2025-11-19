@@ -1,8 +1,28 @@
 # Rayls Ethereum Trust Anchor
 
-> **Bridging Rayls L1 to Ethereum Mainnet with Cryptographic State Commitments**
+> **Bridging Rayls L1 to Ethereum with Zero-Knowledge State Commitments**
 
-A smart contract system that implements the "plans to" feature from the Rayls litepaper (Section 3.3.6) - enabling Rayls L1 to inherit Ethereum's economic security through periodic state root commitments, censorship-resistant message passing, and verifiable state proofs.
+A production-ready trust anchor system that implements the "Inherited Ethereum Security" feature from the Rayls litepaper (Section 3.3.6). Rayls L1 inherits Ethereum's economic security through **real Groth16 ZK proofs**, periodic state commitments, and verifiable cryptographic anchoring.
+
+**Live Demo**: Frontend + Event-Driven Relayer + ZK Verification on Sepolia
+
+---
+
+## 🚀 Live Deployment
+
+### Deployed Contracts
+
+| Contract | Chain | Address |
+|----------|-------|---------|
+| **TrustAnchorZK** | Ethereum Sepolia | `0xB512c3bf279c8222B55423f0D2375753F76dE2dC` |
+| **StateCommitmentVerifier** | Ethereum Sepolia | `0x68dFa54e6E4B3F9BdC6A7D9B5B4c5A8e7C9E3F2D` |
+| **StateRootCommitter** | Rayls Devnet | `0x8a74cCE7275eF27306163210695f3039F820bc17` |
+| **DemoAsset (DBOND)** | Rayls Devnet | `0x509Cdd429D01C4aB64431A8b4db8735a26f031F2` |
+
+### Explorer Links
+
+- **Ethereum (Sepolia)**: [View TrustAnchorZK](https://sepolia.etherscan.io/address/0xB512c3bf279c8222B55423f0D2375753F76dE2dC)
+- **Rayls Devnet**: [View StateRootCommitter](https://devnet-explorer.rayls.com/address/0x8a74cCE7275eF27306163210695f3039F820bc17)
 
 ---
 
@@ -10,55 +30,72 @@ A smart contract system that implements the "plans to" feature from the Rayls li
 
 **Problem**: Rayls L1 needs to inherit Ethereum's security guarantees without sacrificing its high performance (250k TPS, <1s finality).
 
-**Solution**: Build a trust anchor system that:
-1. **Periodically commits** Rayls L1 state roots to Ethereum mainnet
-2. **Enables verification** - Anyone can prove Rayls state against Ethereum-anchored commitments
-3. **Provides censorship resistance** - Users can force transaction inclusion via Ethereum if Rayls validators misbehave
-4. **Maintains privacy** (optional ZK enhancement) - Hide actual state roots while proving validity
+**Solution**: A trust anchor system that:
+
+1. **Commits state** - Rayls state roots anchored to Ethereum with ZK proofs
+2. **Verifies on-chain** - Real Groth16 verification using Ethereum precompiles
+3. **Preserves privacy** - Poseidon hash commitments hide actual state roots
+4. **Event-driven** - Automatic relay when transfers happen on Rayls
 
 ---
 
 ## 🏗️ Architecture
 
-### Two-Chain Design
+### System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    RAYLS L1 (Testnet)                       │
+│                      REACT FRONTEND                          │
+│                                                             │
+│  🌐 Vite + React + ethers.js                                │
+│     - Wallet connection (MetaMask)                          │
+│     - Transfer DBOND tokens on Rayls                        │
+│     - Query commitments on Ethereum                         │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    RAYLS L1 (Devnet)                        │
 │                                                             │
 │  📝 StateRootCommitter.sol                                  │
-│     - Computes Merkle roots of block state                  │
-│     - Batches every N blocks                                │
-│     - Emits events for relayer                              │
+│     - Generates state roots per block                       │
+│     - Tracks committed blocks                               │
 │                                                             │
-│  📬 MessageInbox.sol                                        │
-│     - Receives messages from Ethereum                       │
-│     - Ensures censorship resistance                         │
-│                                                             │
-│  🪙 DemoAsset.sol (ERC-20/1155)                             │
-│     - Example tokenized asset                               │
-│     - Generates state changes to anchor                     │
+│  🪙 DemoAsset.sol (DBOND Token)                             │
+│     - ERC-20 tokenized bond                                 │
+│     - Emits Transfer events                                 │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
                            │
                   ┌────────┴────────┐
-                  │   Relayer       │
-                  │   (Off-chain)   │
-                  │  - Watches Rayls│
-                  │  - Posts to ETH │
-                  └────────┬─────────┘
+                  │  EVENT RELAYER  │
+                  │   (Node.js)     │
+                  │                 │
+                  │ • Listens for   │
+                  │   Transfer      │
+                  │   events        │
+                  │ • Computes      │
+                  │   Poseidon hash │
+                  │ • Generates ZK  │
+                  │   proof (snarkjs)│
+                  │ • Submits to    │
+                  │   Ethereum      │
+                  └────────┬────────┘
                            │
+                           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                ETHEREUM MAINNET (Sepolia Testnet)           │
+│                ETHEREUM (Sepolia Testnet)                   │
 │                                                             │
-│  ⚓ TrustAnchor.sol                                          │
-│     - Stores state root commitments                         │
-│     - Validates submitter signatures                        │
-│     - Provides historical state queries                     │
+│  ⚓ TrustAnchorZK.sol                                        │
+│     - Stores ZK commitments                                 │
+│     - Verifies Groth16 proofs                               │
+│     - Dual mode (transparent + ZK)                          │
 │                                                             │
-│  📤 MessageOutbox.sol                                       │
-│     - Send messages to Rayls                                │
-│     - Censorship-resistant queue                            │
+│  🔐 StateCommitmentVerifier.sol                             │
+│     - REAL Groth16 verifier                    │
+│     - Uses precompiles 0x06, 0x07, 0x08                     │
+│     - ~458k gas per verification                            │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -154,18 +191,47 @@ A smart contract system that implements the "plans to" feature from the Rayls li
 
 ## 🎪 Demo Flow
 
-### Without ZK (Base Demo)
-1. Deploy `DemoAsset` on Rayls, mint tokens → state changes
-2. `StateRootCommitter` computes Merkle root every 10 blocks
-3. Relayer picks up root, posts to `TrustAnchor` on Ethereum
-4. User verifies their balance on Rayls using Ethereum-anchored proof
-5. User submits censored transaction via `MessageOutbox` → forced inclusion
+### Live Demo (2 minutes)
 
-### With ZK (Enhanced Demo)
-1. Same as above, but roots are hidden (only commitments visible)
-2. ZK proof generated: "Valid state exists, signed by validators"
-3. Ethereum verifies proof without seeing actual root
-4. User proves state membership with second ZK proof
+**Terminal 1 - Start Relayer:**
+
+```bash
+cd relayer && npm run events
+```
+
+**Terminal 2 - Start Frontend:**
+
+```bash
+cd frontend && npm run dev
+```
+
+**Demo Steps:**
+
+1. **Connect Wallet** - Open [localhost:5173](http://localhost:5173), connect MetaMask
+2. **Switch to Rayls** - Click "Switch to Rayls" (auto-adds network)
+3. **Transfer Tokens** - Send DBOND to another address
+4. **Watch Relayer** - See automatic detection:
+
+   ```bash
+   🔔 Transfer detected at block 7150!
+   📝 State Root: 0x0000...
+   ⚙️  Generating ZK proof...
+   ✅ Submitted to Ethereum!
+   ⛽ Gas: 458,683
+   ```
+
+5. **Query on Ethereum** - Switch to Sepolia, query commitment
+6. **Verify on Etherscan** - Click the Etherscan link to see TX
+
+### What Happens Under the Hood
+
+1. User transfers DBOND on Rayls → Transfer event emitted
+2. Relayer detects event, captures block number
+3. Generates state root commitment on Rayls
+4. Computes Poseidon hash: `Poseidon(stateRoot, blockNumber, validatorId, salt)`
+5. Generates Groth16 proof with snarkjs (~2s)
+6. Submits proof to Ethereum, verified on-chain (~458k gas)
+7. Commitment stored immutably on Ethereum
 
 ---
 
@@ -271,20 +337,59 @@ A smart contract system that implements the "plans to" feature from the Rayls li
 
 ## 🚀 Getting Started
 
+### Prerequisites
+
+- Node.js 18+
+- Foundry (forge, cast)
+- MetaMask wallet
+- Sepolia ETH (for gas)
+
+### Installation
+
 ```bash
 # Clone repository
 git clone <repo-url>
 cd rayls-trust-anchor
 
-# Install dependencies
+# Install Solidity dependencies
 forge install
 
-# Run tests
-forge test
+# Install relayer dependencies
+cd relayer && npm install && cd ..
 
-# Deploy to testnets
-forge script script/Deploy.s.sol --rpc-url $RAYLS_RPC --broadcast
-forge script script/DeployEthereum.s.sol --rpc-url $SEPOLIA_RPC --broadcast
+# Install frontend dependencies
+cd frontend && npm install && cd ..
+
+# Set up environment
+cp .env.example .env
+# Add PRIVATE_KEY to .env
+```
+
+### Run Tests
+
+```bash
+forge test -vv
+```
+
+### Run Demo
+
+```bash
+# Terminal 1: Start event-driven relayer
+cd relayer && npm run events
+
+# Terminal 2: Start frontend
+cd frontend && npm run dev
+
+# Open http://localhost:5173
+```
+
+### Available Relayer Modes
+
+```bash
+npm run events      # Event-driven (listens to Transfer events)
+npm run relay       # Single block relay
+npm run watch       # Automated every 30s
+npm run watch:fast  # Automated every 10s
 ```
 
 ---
@@ -303,16 +408,28 @@ MIT
 
 ## 📊 Quick Stats
 
-- **Contracts**: 7 (5 MVP + 2 ZK)
-- **Tests**: 24 (100% passing)
-- **Circuits**: 2 (Circom)
-- **Documentation**: 2,000+ lines
-- **Development Time**: 10 hours
-- **Verifier**: REAL Groth16 (210 lines of actual cryptography)
+| Metric | Value |
+|--------|-------|
+| **Contracts** | 7 (5 MVP + 2 ZK) |
+| **Tests** | 24 (100% passing) |
+| **Circuits** | 1 (StateCommitment.circom) |
+| **ZK Verifier** | REAL Groth16 (210 lines) |
+| **Gas per Proof** | ~458,000 |
+| **Proof Generation** | ~2 seconds |
+| **Frontend** | Vite + React + ethers.js |
+| **Relayer** | Node.js + snarkjs + circomlibjs |
 
-**Key Files:**
+### Tech Stack
 
-- [PRODUCTION_READY_STATUS.md](PRODUCTION_READY_STATUS.md) - Complete production readiness guide
-- [REAL_ZK_SETUP.md](REAL_ZK_SETUP.md) - Real vs mock verifier comparison
-- [ZK_IMPLEMENTATION.md](ZK_IMPLEMENTATION.md) - ZK architecture and implementation
-- [PHASE2_SUMMARY.md](PHASE2_SUMMARY.md) - ZK enhancement completion summary
+- **Smart Contracts**: Solidity ^0.8.20, Foundry
+- **ZK Circuits**: Circom 2.1.6, Groth16, Poseidon
+- **Relayer**: Node.js, ethers.js v6, snarkjs, circomlibjs
+- **Frontend**: Vite, React, ethers.js
+- **Networks**: Rayls Devnet, Ethereum Sepolia
+
+### Key Files
+
+- [VISUAL_VERIFICATION_GUIDE.md](VISUAL_VERIFICATION_GUIDE.md) - How to verify this is REAL ZK
+- [DEMO_CHEAT_SHEET.md](DEMO_CHEAT_SHEET.md) - Quick reference for demos
+- [circuits/StateCommitment.circom](circuits/StateCommitment.circom) - ZK circuit source
+- [relayer/event-watcher.js](relayer/event-watcher.js) - Event-driven relayer
